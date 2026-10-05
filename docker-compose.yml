@@ -1,0 +1,63 @@
+# Whole application stack:  docker compose up -d --build
+# Copy .env.example to .env first (the real .env is never committed).
+services:
+  db:
+    build: ./db
+    image: evt-db:${TAG:-latest}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: events
+      MYSQL_USER: app
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - evt-db-data:/var/lib/mysql      # named volume: data survives redeploys
+    restart: unless-stopped
+    networks: [evt-net]
+
+  server:
+    build: ./server
+    image: evt-server:${TAG:-latest}
+    environment:
+      DB_HOST: db
+      DB_NAME: events
+      DB_USER: app
+      DB_PASSWORD: ${DB_PASSWORD}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@events.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [evt-net]
+
+  web:
+    build:
+      context: ./client
+      args:
+        BUILD_NUMBER: ${BUILD_NUMBER:-dev}   # printed in the page footer
+    image: evt-web:${TAG:-latest}
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [evt-net]
+
+  proxy:
+    build: ./proxy
+    image: evt-proxy:${TAG:-latest}
+    ports:
+      - "${PROXY_PORT:-4000}:8080"        # the ONLY published port
+    depends_on:
+      web:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [evt-net]
+
+networks:
+  evt-net:
+
+volumes:
+  evt-db-data:

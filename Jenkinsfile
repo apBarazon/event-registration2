@@ -33,7 +33,8 @@ pipeline {
       steps {
         checkout scm
         sh '''
-          cp "$ENV_FILE" .env
+          # strip Windows line endings (CRLF) so values never carry a hidden \r
+          tr -d '\r' < "$ENV_FILE" > .env
           docker compose version
         '''
       }
